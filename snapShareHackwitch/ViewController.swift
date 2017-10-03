@@ -10,7 +10,10 @@ import UIKit
 import MultipeerConnectivity
 
 class ViewController: UICollectionViewController, UINavigationControllerDelegate, UIImagePickerControllerDelegate, MCSessionDelegate, MCBrowserViewControllerDelegate {
-   var images = [UIImage]()
+    var images = [UIImage]()
+    var peerID: MCPeerID!
+    var mcSession: MCSession!
+    var mcAdvertiserAssistant: MCAdvertiserAssistant!
 
     override func viewDidLoad()
     {
@@ -18,6 +21,9 @@ class ViewController: UICollectionViewController, UINavigationControllerDelegate
         title = "Snap Share"
         navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .camera, target: self, action: #selector(importPicture))
         navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(showConnectionPrompt))
+        peerID = MCPeerID(displayName: UIDevice.current.name)
+        mcSession = MCSession(peer: peerID, securityIdentity: nil, encryptionPreference: .required)
+        mcSession.delegate = self
        
     }
     @objc func importPicture()
@@ -39,10 +45,15 @@ class ViewController: UICollectionViewController, UINavigationControllerDelegate
     
     func startHosting(action: UIAlertAction)
     {
+        mcAdvertiserAssistant = MCAdvertiserAssistant(serviceType: "EASnapShare", discoveryInfo: nil, session: mcSession)
+        mcAdvertiserAssistant.start()
     }
     
     func joinSession(action: UIAlertAction)
     {
+        let mcBrowser = MCBrowserViewController(serviceType: "EASnapShare", session: mcSession)
+        mcBrowser.delegate = self
+        present(mcBrowser, animated: true, completion: nil)
     }
     
 
@@ -54,6 +65,18 @@ class ViewController: UICollectionViewController, UINavigationControllerDelegate
             dismiss(animated: true, completion: nil)
             images.insert(image, at: 0)
             collectionView?.reloadData()
+            if mcSession.connectedPeers.count > 0 {
+                if let imageData = UIImagePNGRepresentation(image) {
+                    do {
+                        try mcSession.send(imageData, toPeers: mcSession.connectedPeers, with: .reliable)
+                    }
+                    catch {
+                        let alert = UIAlertController(title: "Send error", message: error.localizedDescription, preferredStyle: .alert)
+                        alert.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
+                        present(alert, animated: true, completion: nil)
+                    }
+                }
+            }
         }
     }
     func session(_ session: MCSession, peer peerID: MCPeerID, didChange state: MCSessionState)
